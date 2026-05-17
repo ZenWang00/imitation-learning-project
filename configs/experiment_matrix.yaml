@@ -1,0 +1,24 @@
+environments:
+  - CartPole-v1
+  - Pendulum-v1
+
+algorithms:
+  - iqlearn
+  - csil
+  - soar_csil
+
+expert_dataset_sizes:
+  - 1
+  - 5
+  - 10
+  - 20
+
+seeds:
+  - 0
+  - 1
+  - 2
+
+evaluation:
+  episodes: 10
+  metric: mean_return
+

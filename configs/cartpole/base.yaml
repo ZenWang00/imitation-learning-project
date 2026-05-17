@@ -1,0 +1,18 @@
+env_id: CartPole-v1
+task_type: discrete_control
+
+expert:
+  algorithm: ppo
+  total_timesteps: 100000
+  eval_episodes: 10
+  checkpoint_freq: 10000
+
+dataset:
+  trajectory_sizes:
+    - 1
+    - 5
+    - 10
+    - 20
+
+evaluation:
+  episodes: 10

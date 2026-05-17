@@ -1,0 +1,14 @@
+numpy
+pandas
+matplotlib
+seaborn
+pyyaml
+torch
+gymnasium[classic-control]>=0.29.1,<1.3.0
+stable-baselines3==2.8.0
+tensorboard
+tqdm
+rich
+black
+ruff
+pytest

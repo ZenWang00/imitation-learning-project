@@ -1,0 +1,18 @@
+env_id: Pendulum-v1
+task_type: continuous_control
+
+expert:
+  algorithm: sac
+  total_timesteps: 200000
+  eval_episodes: 10
+  checkpoint_freq: 20000
+
+dataset:
+  trajectory_sizes:
+    - 1
+    - 5
+    - 10
+    - 20
+
+evaluation:
+  episodes: 10
