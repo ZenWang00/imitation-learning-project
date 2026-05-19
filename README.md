@@ -179,9 +179,25 @@ conda run -n imitation-learning python scripts/evaluate.py --env-config configs/
 Use a consistent naming convention such as:
 
 ```text
+models/expert/{env}/expert_seed_{seed}.zip
+models/expert/{env}/seed_{seed}_checkpoints/expert_{step}_steps.zip
+data/expert/{env}/traj_{k}/seed_{seed}.npz
 results/logs/{env}/{algorithm}/traj_{k}/seed_{seed}.csv
 models/imitation/{env}/{algorithm}/traj_{k}/seed_{seed}.pt
 ```
+
+Expert policies and expert datasets are shared across imitation algorithms. They are keyed by environment, dataset size, and seed, but not by imitation algorithm. This is intentional: `IQ-Learn`, `CSIL`, and `SOAR-CSIL` should train on the same expert demonstrations for a fair comparison.
+
+Imitation outputs include the algorithm name in the path, so different algorithms do not overwrite each other:
+
+```text
+models/imitation/CartPole-v1/iqlearn/traj_5/seed_0.pt
+models/imitation/CartPole-v1/csil/traj_5/seed_0.pt
+results/logs/CartPole-v1/iqlearn/traj_5/seed_0.csv
+results/logs/CartPole-v1/csil/traj_5/seed_0.csv
+```
+
+Rerunning the same environment, algorithm, dataset size, and seed overwrites that specific imitation checkpoint and log. Use a separate `--output-root` when comparing hyperparameter variants that should be kept side by side.
 
 Each result row should at least record:
 

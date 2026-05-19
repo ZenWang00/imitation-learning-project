@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.envs.actions import format_action_for_env
 from src.utils.config import load_yaml
 from src.utils.evaluation import evaluate_policy
 from src.utils.paths import expert_checkpoint_dir, expert_model_path
@@ -64,7 +65,9 @@ def main() -> None:
 
     mean_return, std_return = evaluate_policy(
         config["env_id"],
-        lambda obs: model.predict(obs, deterministic=True)[0],
+        lambda obs: format_action_for_env(
+            model.predict(obs, deterministic=True)[0], env.action_space
+        ),
         episodes=int(config["expert"]["eval_episodes"]),
         seed=args.seed,
     )

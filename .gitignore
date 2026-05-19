@@ -17,8 +17,3 @@ models/imitation/*
 !models/imitation/.gitkeep
 results/logs/*
 !results/logs/.gitkeep
-results/figures/*
-!results/figures/.gitkeep
-results/tables/*
-!results/tables/.gitkeep
-
