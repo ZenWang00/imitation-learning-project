@@ -17,5 +17,8 @@ models/imitation/*
 !models/imitation/.gitkeep
 results/logs/*
 !results/logs/.gitkeep
+!results/logs/CartPole-v1/
+!results/logs/CartPole-v1/iqlearn/
+!results/logs/CartPole-v1/iqlearn/**
 artifacts/*
 !artifacts/.gitkeep

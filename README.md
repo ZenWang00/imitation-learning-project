@@ -165,6 +165,12 @@ Evaluate IQ-Learn:
 conda run -n imitation-learning python scripts/evaluate.py --seed 0 --trajectories 1
 ```
 
+Analyze logs and generate summary tables and figures:
+
+```bash
+conda run -n imitation-learning python scripts/analyze_results.py --env-id CartPole-v1 --algorithm iqlearn
+```
+
 For `Pendulum-v1`, use:
 
 ```bash
@@ -266,6 +272,14 @@ Each result row should at least record:
 - training step
 - evaluation return
 - wall-clock time
+
+Analysis outputs are written to:
+
+```text
+results/tables/run_summary.csv
+results/tables/aggregate_summary.csv
+results/figures/{env}_{algorithm}_best_return.png
+```
 
 ## Practical Notes
 
