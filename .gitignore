@@ -17,3 +17,5 @@ models/imitation/*
 !models/imitation/.gitkeep
 results/logs/*
 !results/logs/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
