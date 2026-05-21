@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.datasets.transitions import TransitionDataset
+from src.envs.actions import action_dtype_for_space, format_action_for_env
 from src.utils.config import load_yaml
 from src.utils.paths import expert_dataset_path, expert_model_path
 
@@ -52,10 +53,7 @@ def main() -> None:
             timestep = 0
             while not (terminated or truncated):
                 predicted_action = model.predict(observation, deterministic=True)[0]
-                if isinstance(env.action_space, gym.spaces.Discrete):
-                    action = int(predicted_action)
-                else:
-                    action = np.asarray(predicted_action, dtype=np.float32)
+                action = format_action_for_env(predicted_action, env.action_space)
                 next_observation, reward, terminated, truncated, _ = env.step(action)
                 observations.append(np.asarray(observation, dtype=np.float32))
                 actions.append(action)
@@ -71,10 +69,7 @@ def main() -> None:
 
     dataset = TransitionDataset(
         observations=np.asarray(observations, dtype=np.float32),
-        actions=np.asarray(
-            actions,
-            dtype=np.float32 if actions and isinstance(actions[0], np.ndarray) else np.int64,
-        ),
+        actions=np.asarray(actions, dtype=action_dtype_for_space(env.action_space)),
         next_observations=np.asarray(next_observations, dtype=np.float32),
         dones=np.asarray(dones, dtype=np.float32),
         rewards=np.asarray(rewards, dtype=np.float32),

@@ -165,6 +165,12 @@ Evaluate IQ-Learn:
 conda run -n imitation-learning python scripts/evaluate.py --seed 0 --trajectories 1
 ```
 
+Analyze logs and generate summary tables and figures:
+
+```bash
+conda run -n imitation-learning python scripts/analyze_results.py --env-id CartPole-v1 --algorithm iqlearn
+```
+
 For `Pendulum-v1`, use:
 
 ```bash
@@ -179,8 +185,82 @@ conda run -n imitation-learning python scripts/evaluate.py --env-config configs/
 Use a consistent naming convention such as:
 
 ```text
+models/expert/{env}/expert_seed_{seed}.zip
+models/expert/{env}/seed_{seed}_checkpoints/expert_{step}_steps.zip
+data/expert/{env}/traj_{k}/seed_{seed}.npz
 results/logs/{env}/{algorithm}/traj_{k}/seed_{seed}.csv
 models/imitation/{env}/{algorithm}/traj_{k}/seed_{seed}.pt
+```
+
+Expert policies and expert datasets are shared across imitation algorithms. They are keyed by environment, dataset size, and seed, but not by imitation algorithm. This is intentional: `IQ-Learn`, `CSIL`, and `SOAR-CSIL` should train on the same expert demonstrations for a fair comparison.
+
+Imitation outputs include the algorithm name in the path, so different algorithms do not overwrite each other:
+
+```text
+models/imitation/CartPole-v1/iqlearn/traj_5/seed_0.pt
+models/imitation/CartPole-v1/csil/traj_5/seed_0.pt
+results/logs/CartPole-v1/iqlearn/traj_5/seed_0.csv
+results/logs/CartPole-v1/csil/traj_5/seed_0.csv
+```
+
+Rerunning the same environment, algorithm, dataset size, and seed overwrites that specific imitation checkpoint and log. Use a separate `--output-root` when comparing hyperparameter variants that should be kept side by side.
+
+## Shared Artifacts
+
+Large generated artifacts are not committed to Git. Use Google Drive for shared expert policies and expert datasets.
+
+Current Google Drive layout:
+
+```text
+gdrive:imitation-learning-project-artifacts/
+└── CartPole-v1/
+    ├── cartpole_expert_artifacts.tar.gz
+    ├── cartpole_expert_artifacts.sha256
+    └── cartpole_expert_artifacts_README.txt
+```
+
+Install and configure `rclone`:
+
+```bash
+brew install rclone
+rclone config
+```
+
+Create a Google Drive remote named `gdrive`. After configuration, verify access:
+
+```bash
+rclone listremotes
+rclone lsl gdrive:imitation-learning-project-artifacts/CartPole-v1
+```
+
+Download the shared CartPole expert artifacts from the repository root:
+
+```bash
+rclone copy gdrive:imitation-learning-project-artifacts/CartPole-v1/cartpole_expert_artifacts.tar.gz .
+rclone copy gdrive:imitation-learning-project-artifacts/CartPole-v1/cartpole_expert_artifacts.sha256 .
+shasum -a 256 -c cartpole_expert_artifacts.sha256
+tar -xzf cartpole_expert_artifacts.tar.gz
+```
+
+After extraction, the repository should contain:
+
+```text
+models/expert/CartPole-v1/expert_seed_{0,1,2}.zip
+data/expert/CartPole-v1/traj_{1,5,10,20}/seed_{0,1,2}.npz
+```
+
+Upload a refreshed CartPole artifact bundle:
+
+```bash
+tar --exclude='models/expert/CartPole-v1/seed_*_checkpoints' \
+  -czf artifacts/cartpole_expert_artifacts.tar.gz \
+  models/expert/CartPole-v1 \
+  data/expert/CartPole-v1
+
+shasum -a 256 artifacts/cartpole_expert_artifacts.tar.gz > artifacts/cartpole_expert_artifacts.sha256
+
+rclone copy artifacts gdrive:imitation-learning-project-artifacts/CartPole-v1 \
+  --include 'cartpole_expert_artifacts*'
 ```
 
 Each result row should at least record:
@@ -192,6 +272,14 @@ Each result row should at least record:
 - training step
 - evaluation return
 - wall-clock time
+
+Analysis outputs are written to:
+
+```text
+results/tables/run_summary.csv
+results/tables/aggregate_summary.csv
+results/figures/{env}_{algorithm}_best_return.png
+```
 
 ## Practical Notes
 

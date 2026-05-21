@@ -1,0 +1,13 @@
+env_id,algorithm,dataset_size,seed,best_step,best_eval_return_mean,best_eval_return_std,final_step,final_eval_return_mean,final_loss,log_path
+CartPole-v1,iqlearn,1,0,500,104.4,40.54922933916254,4500,89.2,-1822.725830078125,results/logs/CartPole-v1/iqlearn/traj_1/seed_0.csv
+CartPole-v1,iqlearn,1,1,3500,184.9,168.23819423662394,7500,12.5,-1346.48095703125,results/logs/CartPole-v1/iqlearn/traj_1/seed_1.csv
+CartPole-v1,iqlearn,1,2,1000,324.9,214.5378521380318,5000,141.4,93.990234375,results/logs/CartPole-v1/iqlearn/traj_1/seed_2.csv
+CartPole-v1,iqlearn,5,0,6500,375.3,191.0366718721827,10500,332.0,-8.067337036132812,results/logs/CartPole-v1/iqlearn/traj_5/seed_0.csv
+CartPole-v1,iqlearn,5,1,4500,267.3,186.23750964829827,8500,106.6,-266.1726989746094,results/logs/CartPole-v1/iqlearn/traj_5/seed_1.csv
+CartPole-v1,iqlearn,5,2,2000,370.4,173.0758215349562,6000,23.6,-618.0670166015625,results/logs/CartPole-v1/iqlearn/traj_5/seed_2.csv
+CartPole-v1,iqlearn,10,0,1500,178.3,185.84135707640536,5500,122.5,-119.90731811523438,results/logs/CartPole-v1/iqlearn/traj_10/seed_0.csv
+CartPole-v1,iqlearn,10,1,2000,325.3,169.41018269277677,6000,49.8,-217.435302734375,results/logs/CartPole-v1/iqlearn/traj_10/seed_1.csv
+CartPole-v1,iqlearn,10,2,4500,456.2,119.03764110566036,8500,399.2,9534.779296875,results/logs/CartPole-v1/iqlearn/traj_10/seed_2.csv
+CartPole-v1,iqlearn,20,0,1500,187.7,157.84362514843608,5500,160.4,-149.45428466796875,results/logs/CartPole-v1/iqlearn/traj_20/seed_0.csv
+CartPole-v1,iqlearn,20,1,2500,202.9,144.199479888105,6500,77.2,-107.3704071044922,results/logs/CartPole-v1/iqlearn/traj_20/seed_1.csv
+CartPole-v1,iqlearn,20,2,5000,355.6,182.84430535294223,9000,320.1,1587.3963623046875,results/logs/CartPole-v1/iqlearn/traj_20/seed_2.csv
