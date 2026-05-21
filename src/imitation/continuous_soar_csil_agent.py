@@ -13,57 +13,63 @@ from src.imitation.csil import (
     BCContinuousActor,
     bc_continuous_loss,
     coherent_reward_continuous,
-    csil_actor_loss,
     csil_continuous_critic_loss,
 )
-from src.imitation.soar import StateDiscriminator, soar_discriminator_loss
 
 
 class ContinuousSOARCSILAgent(ImitationAgent):
-    """SOAR-enhanced Coherent Soft Imitation Learning with continuous actions (Pendulum-v1).
+    """SOAR-enhanced CSIL for continuous actions (Pendulum-v1).
 
-    Extends ContinuousCSILAgent with a state occupancy discriminator (SOAR).
-    Total reward: r(s,a) = r_coherent(s,a) + soar_weight * log_odds_D(s)
+    Implements the SOAR template from Viel et al., ICML 2025 (arXiv:2502.19859)
+    applied on top of Coherent Soft Imitation Learning.
+
+    SOAR = Soft Optimistic Actor cRitic: N Q-networks. The actor maximises
+        Q_opt(s,a) = mean_i[Q_i(s,a)] + uncertainty_coef * std_i[Q_i(s,a)]
+    yielding a UCB-style exploration bonus from Q-value disagreement.
+
+    Two-phase training:
+      1. BC pretraining: fit bc_actor via NLL on expert data, then freeze it.
+      2. RL fine-tuning: SAC with coherent reward r = alpha*(log pi_BC - log N(0,I)).
+         rl_actor warm-started from bc_actor, then trained with the optimistic Q actor loss.
     """
 
     def __init__(
         self,
         bc_actor: BCContinuousActor,
         rl_actor: BCContinuousActor,
-        discriminator: StateDiscriminator,
-        q_network: ContinuousQNetwork,
-        target_q_network: ContinuousQNetwork,
+        q_networks: list[ContinuousQNetwork],
+        target_q_networks: list[ContinuousQNetwork],
         *,
         gamma: float,
         temperature: float,
-        soar_weight: float,
+        uncertainty_coef: float,
+        q_std_clip: float,
         bc_lr: float,
-        discriminator_lr: float,
         policy_lr: float,
         actor_lr: float,
         target_update_interval: int,
         device: torch.device | str = "cpu",
     ) -> None:
+        assert len(q_networks) == len(target_q_networks) and len(q_networks) >= 1
         self.device = torch.device(device)
         self.bc_actor = bc_actor.to(self.device)
         self.rl_actor = rl_actor.to(self.device)
-        self.discriminator = discriminator.to(self.device)
-        self.q_network = q_network.to(self.device)
-        self.target_q_network = target_q_network.to(self.device)
-        self.target_q_network.load_state_dict(self.q_network.state_dict())
+        self.q_networks = [q.to(self.device) for q in q_networks]
+        self.target_q_networks = [q.to(self.device) for q in target_q_networks]
+        for q, tq in zip(self.q_networks, self.target_q_networks):
+            tq.load_state_dict(q.state_dict())
         self.gamma = gamma
         self.temperature = temperature
-        self.soar_weight = soar_weight
+        self.uncertainty_coef = uncertainty_coef
+        self.q_std_clip = q_std_clip
         self.bc_lr = bc_lr
-        self.discriminator_lr = discriminator_lr
         self.policy_lr = policy_lr
         self.actor_lr = actor_lr
         self.target_update_interval = target_update_interval
         self.bc_optimizer = torch.optim.Adam(self.bc_actor.parameters(), lr=bc_lr)
-        self.discriminator_optimizer = torch.optim.Adam(
-            self.discriminator.parameters(), lr=discriminator_lr
-        )
-        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=policy_lr)
+        self.q_optimizers = [
+            torch.optim.Adam(q.parameters(), lr=policy_lr) for q in self.q_networks
+        ]
         self.actor_optimizer = torch.optim.Adam(self.rl_actor.parameters(), lr=actor_lr)
         self.update_steps = 0
 
@@ -78,18 +84,25 @@ class ContinuousSOARCSILAgent(ImitationAgent):
         if action_type != "continuous":
             raise ValueError("ContinuousSOARCSILAgent only supports continuous action spaces")
         hidden_dims = tuple(config.get("hidden_dims", (256, 256)))
-        soar_hidden_dims = tuple(config.get("soar_hidden_dims", (128, 128)))
+        num_q = int(config.get("num_q_networks", 4))
+        q_networks = [
+            ContinuousQNetwork(observation_dim, action_dim, hidden_dims=hidden_dims)
+            for _ in range(num_q)
+        ]
+        target_q_networks = [
+            ContinuousQNetwork(observation_dim, action_dim, hidden_dims=hidden_dims)
+            for _ in range(num_q)
+        ]
         return cls(
             bc_actor=BCContinuousActor(observation_dim, action_dim, hidden_dims),
             rl_actor=BCContinuousActor(observation_dim, action_dim, hidden_dims),
-            discriminator=StateDiscriminator(observation_dim, soar_hidden_dims),
-            q_network=ContinuousQNetwork(observation_dim, action_dim, hidden_dims),
-            target_q_network=ContinuousQNetwork(observation_dim, action_dim, hidden_dims),
+            q_networks=q_networks,
+            target_q_networks=target_q_networks,
             gamma=float(config.get("gamma", 0.99)),
             temperature=float(config.get("temperature", 0.1)),
-            soar_weight=float(config.get("soar_weight", 0.1)),
+            uncertainty_coef=float(config.get("uncertainty_coef", 1.0)),
+            q_std_clip=float(config.get("q_std_clip", 1.0)),
             bc_lr=float(config.get("bc_lr", 3e-4)),
-            discriminator_lr=float(config.get("discriminator_lr", 3e-4)),
             policy_lr=float(config.get("policy_lr", 3e-4)),
             actor_lr=float(config.get("actor_lr", 3e-4)),
             target_update_interval=int(config.get("target_update_interval", 250)),
@@ -125,63 +138,65 @@ class ContinuousSOARCSILAgent(ImitationAgent):
     def update(self, batch: TransitionBatch) -> dict[str, float]:
         raise NotImplementedError("Use update_with_replay for SOAR-CSIL training")
 
+    def _optimistic_q(
+        self, observations: torch.Tensor, actions: torch.Tensor
+    ) -> torch.Tensor:
+        """Q_opt(s,a) = mean_i[Q_i(s,a)] + uncertainty_coef * std_i[Q_i(s,a)]."""
+        q_vals = torch.stack(
+            [q(observations, actions) for q in self.q_networks], dim=0
+        )  # [N, B]
+        q_mean = q_vals.mean(dim=0)
+        if len(self.q_networks) > 1:
+            q_std = q_vals.std(dim=0).clamp(0.0, self.q_std_clip)
+            return q_mean + self.uncertainty_coef * q_std
+        return q_mean
+
     def update_with_replay(
         self,
         expert_batch: TransitionBatch,
         replay_batch: TransitionBatch,
     ) -> dict[str, float]:
-        # 1. Update SOAR discriminator
-        disc_loss, disc_metrics = soar_discriminator_loss(
-            expert_batch.observations,
-            replay_batch.observations,
-            self.discriminator,
-        )
-        self.discriminator_optimizer.zero_grad()
-        disc_loss.backward()
-        self.discriminator_optimizer.step()
-
-        # 2. Compute total reward: coherent + SOAR bonus
-        with torch.no_grad():
-            coherent_rewards = coherent_reward_continuous(
-                replay_batch.observations,
-                replay_batch.actions,
-                self.bc_actor,
-                alpha=self.temperature,
-            )
-            soar_bonus = self.discriminator.log_odds(replay_batch.observations)
-            total_rewards = coherent_rewards + self.soar_weight * soar_bonus
-
-        # 3. Update critic
-        q_loss, q_metrics = csil_continuous_critic_loss(
+        rewards = coherent_reward_continuous(
             replay_batch.observations,
             replay_batch.actions,
-            replay_batch.next_observations,
-            replay_batch.dones,
-            total_rewards,
-            self.q_network,
-            self.target_q_network,
-            self.rl_actor,
-            gamma=self.gamma,
-            temperature=self.temperature,
+            self.bc_actor,
+            alpha=self.temperature,
         )
-        self.q_optimizer.zero_grad()
-        q_loss.backward()
-        self.q_optimizer.step()
 
-        # 4. Update RL actor
-        actor_loss, _ = csil_actor_loss(
-            replay_batch.observations,
-            self.q_network,
-            self.rl_actor,
-            temperature=self.temperature,
-        )
+        # Update each Q-network independently with its own target
+        total_q_loss = 0.0
+        for q_net, target_q_net, opt in zip(
+            self.q_networks, self.target_q_networks, self.q_optimizers
+        ):
+            q_loss, q_metrics = csil_continuous_critic_loss(
+                replay_batch.observations,
+                replay_batch.actions,
+                replay_batch.next_observations,
+                replay_batch.dones,
+                rewards,
+                q_net,
+                target_q_net,
+                self.rl_actor,
+                gamma=self.gamma,
+                temperature=self.temperature,
+            )
+            opt.zero_grad()
+            q_loss.backward()
+            opt.step()
+            total_q_loss += q_loss.item()
+
+        # Actor update: maximise optimistic Q minus entropy penalty
+        sampled_actions, log_probs = self.rl_actor.sample(replay_batch.observations)
+        q_opt = self._optimistic_q(replay_batch.observations, sampled_actions)
+        actor_loss = (self.temperature * log_probs - q_opt).mean()
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
         self.update_steps += 1
         if self.update_steps % self.target_update_interval == 0:
-            self.target_q_network.load_state_dict(self.q_network.state_dict())
+            for q_net, target_q_net in zip(self.q_networks, self.target_q_networks):
+                target_q_net.load_state_dict(q_net.state_dict())
 
         expert_rewards = coherent_reward_continuous(
             expert_batch.observations,
@@ -189,15 +204,19 @@ class ContinuousSOARCSILAgent(ImitationAgent):
             self.bc_actor,
             alpha=self.temperature,
         )
+        with torch.no_grad():
+            q_opt_stats = self._optimistic_q(
+                replay_batch.observations, replay_batch.actions
+            )
         return {
-            "loss": float(q_loss.item()),
+            "loss": total_q_loss / len(self.q_networks),
             "actor_loss": float(actor_loss.item()),
             "expert_reward_mean": float(expert_rewards.mean().item()),
             "expert_term": 0.0,
-            "replay_term": float(soar_bonus.mean().item()),
+            "replay_term": 0.0,
             "regularizer": 0.0,
-            "q_mean": float(q_metrics["q_mean"].item()),
-            "q_abs_max": float(q_metrics["q_mean"].abs().item()),
+            "q_mean": float(q_opt_stats.mean().item()),
+            "q_abs_max": float(q_opt_stats.abs().max().item()),
         }
 
     def act(self, observation: np.ndarray, deterministic: bool = True) -> np.ndarray:
@@ -214,33 +233,31 @@ class ContinuousSOARCSILAgent(ImitationAgent):
     def save(self, path: str | Path) -> None:
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        hidden_dims = [
+            layer.out_features
+            for layer in self.bc_actor.backbone
+            if isinstance(layer, torch.nn.Linear)
+        ][:-1]
         torch.save(
             {
                 "bc_actor_state_dict": self.bc_actor.state_dict(),
                 "rl_actor_state_dict": self.rl_actor.state_dict(),
-                "discriminator_state_dict": self.discriminator.state_dict(),
-                "q_network_state_dict": self.q_network.state_dict(),
-                "target_q_network_state_dict": self.target_q_network.state_dict(),
+                "q_network_state_dicts": [q.state_dict() for q in self.q_networks],
+                "target_q_network_state_dicts": [
+                    q.state_dict() for q in self.target_q_networks
+                ],
                 "gamma": self.gamma,
                 "temperature": self.temperature,
-                "soar_weight": self.soar_weight,
+                "uncertainty_coef": self.uncertainty_coef,
+                "q_std_clip": self.q_std_clip,
                 "bc_lr": self.bc_lr,
-                "discriminator_lr": self.discriminator_lr,
                 "policy_lr": self.policy_lr,
                 "actor_lr": self.actor_lr,
                 "target_update_interval": self.target_update_interval,
                 "observation_dim": self.bc_actor.backbone[0].in_features,
                 "action_dim": self.bc_actor.action_dim,
-                "hidden_dims": [
-                    layer.out_features
-                    for layer in self.bc_actor.backbone
-                    if isinstance(layer, torch.nn.Linear)
-                ][:-1],
-                "soar_hidden_dims": [
-                    layer.out_features
-                    for layer in self.discriminator.model
-                    if isinstance(layer, torch.nn.Linear)
-                ][:-1],
+                "hidden_dims": hidden_dims,
+                "num_q_networks": len(self.q_networks),
             },
             output_path,
         )
@@ -251,14 +268,14 @@ class ContinuousSOARCSILAgent(ImitationAgent):
         config = {
             "gamma": payload["gamma"],
             "temperature": payload["temperature"],
-            "soar_weight": payload["soar_weight"],
+            "uncertainty_coef": payload["uncertainty_coef"],
+            "q_std_clip": payload["q_std_clip"],
             "bc_lr": payload["bc_lr"],
-            "discriminator_lr": payload["discriminator_lr"],
             "policy_lr": payload["policy_lr"],
             "actor_lr": payload["actor_lr"],
             "target_update_interval": payload["target_update_interval"],
             "hidden_dims": payload["hidden_dims"],
-            "soar_hidden_dims": payload["soar_hidden_dims"],
+            "num_q_networks": payload["num_q_networks"],
         }
         agent = cls.build_model(
             payload["observation_dim"], payload["action_dim"], "continuous", config
@@ -267,7 +284,8 @@ class ContinuousSOARCSILAgent(ImitationAgent):
         agent.bc_actor.eval()
         agent.bc_actor.requires_grad_(False)
         agent.rl_actor.load_state_dict(payload["rl_actor_state_dict"])
-        agent.discriminator.load_state_dict(payload["discriminator_state_dict"])
-        agent.q_network.load_state_dict(payload["q_network_state_dict"])
-        agent.target_q_network.load_state_dict(payload["target_q_network_state_dict"])
+        for q, sd in zip(agent.q_networks, payload["q_network_state_dicts"]):
+            q.load_state_dict(sd)
+        for q, sd in zip(agent.target_q_networks, payload["target_q_network_state_dicts"]):
+            q.load_state_dict(sd)
         return agent

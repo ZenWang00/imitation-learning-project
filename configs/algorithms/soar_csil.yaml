@@ -1,10 +1,11 @@
 name: soar_csil
 gamma: 0.99
 temperature: 1.0
-soar_weight: 0.1
+num_q_networks: 4
+uncertainty_coef: 1.0
+q_std_clip: 1.0
 bc_lr: 0.0003
 bc_pretrain_steps: 5000
-discriminator_lr: 0.0003
 policy_lr: 0.0003
 max_grad_norm: 10.0
 batch_size: 256
@@ -16,8 +17,5 @@ rollout_steps_per_iter: 1
 eval_interval: 500
 early_stopping_patience_evals: 8
 hidden_dims:
-  - 128
-  - 128
-soar_hidden_dims:
   - 128
   - 128
