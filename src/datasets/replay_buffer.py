@@ -51,6 +51,7 @@ class ReplayBuffer:
         batch_size: int,
         *,
         generator: np.random.Generator,
+        device: torch.device | str = "cpu",
     ) -> TransitionBatch:
         if not self._storage:
             raise ValueError("Cannot sample from an empty replay buffer")
@@ -72,4 +73,4 @@ class ReplayBuffer:
             episode_ids=np.zeros(batch_size, dtype=np.int64),
             timesteps=np.zeros(batch_size, dtype=np.int64),
         )
-        return dataset.sample_batch(batch_size, generator=generator)
+        return dataset.sample_batch(batch_size, generator=generator, device=device)

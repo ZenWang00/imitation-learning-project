@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--updates", type=int)
     parser.add_argument("--output-root", default=".")
     parser.add_argument("--dataset-root")
+    parser.add_argument("--device", default=None, help="Override device in config (e.g. cuda, cpu)")
     return parser.parse_args()
 
 
@@ -37,6 +38,8 @@ def main() -> None:
     args = parse_args()
     env_config = load_yaml(args.env_config)
     algorithm_config = load_yaml(args.algorithm_config)
+    if args.device is not None:
+        algorithm_config["device"] = args.device
     dataset_root = args.dataset_root or args.output_root
     dataset = TransitionDataset.load(
         expert_dataset_path(dataset_root, env_config["env_id"], args.trajectories, args.seed)
@@ -51,6 +54,7 @@ def main() -> None:
         config=algorithm_config,
     )
     rng = np.random.default_rng(args.seed)
+    device = algorithm_config.get("device", "cpu")
     updates = args.updates or int(algorithm_config["total_updates"])
     batch_size = int(algorithm_config["batch_size"])
     replay_buffer = ReplayBuffer(int(algorithm_config["replay_buffer_size"]))
@@ -114,8 +118,8 @@ def main() -> None:
                 if done:
                     observation, _ = rollout_env.reset()
 
-            expert_batch = dataset.sample_batch(batch_size, generator=rng)
-            replay_batch = replay_buffer.sample_batch(batch_size, generator=rng)
+            expert_batch = dataset.sample_batch(batch_size, generator=rng, device=device)
+            replay_batch = replay_buffer.sample_batch(batch_size, generator=rng, device=device)
             last_metrics = agent.update_with_replay(expert_batch, replay_batch)
             if (
                 step == 1

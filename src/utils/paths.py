@@ -4,7 +4,8 @@ from pathlib import Path
 
 
 def expert_model_path(root: str | Path, env_id: str, seed: int) -> Path:
-    return Path(root) / "models" / "expert" / env_id / f"expert_seed_{seed}.zip"
+    # SB3 appends .zip automatically on both save and load — do not include it here
+    return Path(root) / "models" / "expert" / env_id / f"expert_seed_{seed}"
 
 
 def expert_checkpoint_dir(root: str | Path, env_id: str, seed: int) -> Path:

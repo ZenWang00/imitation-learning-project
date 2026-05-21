@@ -52,11 +52,10 @@ def main() -> None:
             timestep = 0
             while not (terminated or truncated):
                 predicted_action = model.predict(observation, deterministic=True)[0]
-                action = (
-                    int(predicted_action)
-                    if np.isscalar(predicted_action)
-                    else np.asarray(predicted_action, dtype=np.float32)
-                )
+                if isinstance(env.action_space, gym.spaces.Discrete):
+                    action = int(predicted_action)
+                else:
+                    action = np.asarray(predicted_action, dtype=np.float32)
                 next_observation, reward, terminated, truncated, _ = env.step(action)
                 observations.append(np.asarray(observation, dtype=np.float32))
                 actions.append(action)
