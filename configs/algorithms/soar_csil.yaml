@@ -1,9 +1,9 @@
 name: soar_csil
 gamma: 0.99
 temperature: 1.0
-regularization_weight: 0.25
 soar_weight: 0.1
-reward_lr: 0.0003
+bc_lr: 0.0003
+bc_pretrain_steps: 5000
 discriminator_lr: 0.0003
 policy_lr: 0.0003
 max_grad_norm: 10.0

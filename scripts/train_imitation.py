@@ -55,6 +55,11 @@ def main() -> None:
     )
     rng = np.random.default_rng(args.seed)
     device = algorithm_config.get("device", "cpu")
+    bc_pretrain_steps = int(algorithm_config.get("bc_pretrain_steps", 0))
+    if bc_pretrain_steps > 0 and hasattr(agent, "pretrain"):
+        print(f"BC pretraining: {bc_pretrain_steps} steps...", flush=True)
+        agent.pretrain(dataset, bc_pretrain_steps, batch_size, rng)
+        print("BC pretraining complete.", flush=True)
     updates = args.updates or int(algorithm_config["total_updates"])
     batch_size = int(algorithm_config["batch_size"])
     replay_buffer = ReplayBuffer(int(algorithm_config["replay_buffer_size"]))
